@@ -4,7 +4,9 @@ from networkx.generators.random_graphs import erdos_renyi_graph, newman_watts_st
 import matplotlib.pyplot as plt
 import networkx as nx
 from node import Node
-from scipy.io import mmread
+import sys
+from construct_adj_mat import construct_adj_mat
+#from scipy.io import mmread
 
 rng = np.random.default_rng()
 status_to_num = {"S": 0, "E": 1, "I": 2, "R": 3}
@@ -59,21 +61,24 @@ if __name__ == "__main__":
     # parameter folder
     cwd = os.getcwd()
     par_folder = os.path.join(cwd, "parameters")
-    new_matrix = True
+    new_matrix = False
+
+    # other parameters
+    num_days = 90
+    scale = 10**3
+    num_nodes = 40*scale
+    total_node_set = set(range(0,num_nodes))
+    starting_exposure_frac = np.array([1.0, 1.0])/scale
+    delay_day = 0
 
     # will keep track of all daily statistics
     daily_counts = [[], []]
     affected_nodes = [set(), set()]
     global_blocking_events = []
     count_self_blocks = True
-    
-    # other parameters
-    num_days = 150
-    scale = 10**3
-    num_nodes = 40*scale
-    total_node_set = set(range(0,num_nodes))
-    starting_exposure_frac = np.array([0.0, 1.0])/scale
-    delay_day = 0
+    used_recovered_node = np.zeros((2,num_days))
+    used_recovered_degree = np.zeros((2,num_days))
+
 
     # delayed entry of second disease options
     if delay_day > 0:
@@ -85,18 +90,27 @@ if __name__ == "__main__":
     fall_ill = [0.4,0.1]  # prob of becoming fully infected
     rec_prob = [2.0/num_days,2.0/num_days]
     dis_weight = [1,1]
-    prior_res = [0,0.4]
+    prior_res = [0,0]
 
     # adjacency matrix construction and/or saving
     if new_matrix:
         #G = newman_watts_strogatz_graph(num_nodes, int(num_nodes/100), 0)
         #G = erdos_renyi_graph(num_nodes, 0.7/scale)
-        G=barabasi_albert_graph(num_nodes, int(0.7/scale*num_nodes))
-        adjacency_matrix = nx.to_scipy_sparse_array(G)
+        # G=barabasi_albert_graph(num_nodes, int(0.3/scale*num_nodes))
+        # adjacency_matrix = nx.to_scipy_sparse_array(G)
+        adjacency_matrix = construct_adj_mat(num_nodes, 100, 0.1/scale, 20)
         np.save(os.path.join(par_folder, "adj_mat"), adjacency_matrix)
         
     else:
         adjacency_matrix = np.load(os.path.join(par_folder, "adj_mat.npy"))
+
+    # calculate degree list
+    degree_values = np.sum(adjacency_matrix, axis=0)
+    print(f"Maximum degree: {max(degree_values)}")
+    print(f"Mean degree value: {np.mean(degree_values)}")
+    proceed = input()
+    if proceed != "y":
+        sys.exit()
 
     node_list, all_exposures = build_node_list(adjacency_matrix, starting_exposure_frac,
                                                 trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
@@ -147,30 +161,17 @@ if __name__ == "__main__":
     # draw graph
     plot_graph = False
     if plot_graph:
-        pos = nx.spring_layout(G, seed=3113794652)
+        pos = nx.spring_layout(G, seed=42335487)
         nx.draw_networkx_nodes(G, pos, nodelist=list(affected_nodes[0]), node_color="blue")
         nx.draw_networkx_nodes(G, pos, nodelist=list(affected_nodes[1]), node_color="orange")
         remaining_nodes = total_node_set.difference(affected_nodes[0].union(affected_nodes[1]))
         nx.draw_networkx_nodes(G, pos, nodelist=list(remaining_nodes), node_color="gray")
         nx.draw_networkx_edges(G, pos, width=0.3, alpha=0.5)
-    
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2)
-    
-    ax1.plot(disease_one_counts[:,1], label="Disease one exposed")
-    ax1.plot(disease_two_counts[:,1], label="Disease two exposed")
-    ax2.plot(disease_one_counts[:,2], label="Disease one infected")
-    ax2.plot(disease_two_counts[:,2], label="Disease two infected")
-    ax3.plot(disease_one_counts[:,3], label="Disease one recovered")
-    ax3.plot(disease_two_counts[:,3], label="Disease two recovered")
-    ax4.plot(disease_one_counts[:,0], label="Disease one susceptible")
-    ax4.plot(disease_two_counts[:,0], label="Disease two susceptible")    
-    ax1.legend()
-    ax2.legend()
-    ax3.legend()
-    ax4.legend()
-    plt.show()
 
+    # create subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2)
     fig2, ((pi1, pi2), (hist, bar)) = plt.subplots(2,2)
+
     exposure_blocks = np.array([0,0])
     infection_blocks = np.array([0,0])
     block_day_histogram = np.zeros((2,num_days))
@@ -181,11 +182,28 @@ if __name__ == "__main__":
         block_issued, disease_index, index, status, day, self_block = status_readout
         if block_issued and (count_self_blocks or not self_block):
             block_day_histogram[disease_index, day] += 1
-            if status[disease_index] == "E":
+            if status[1-disease_index] == "E":
                 exposure_blocks[disease_index] += 1
-            elif status[disease_index] == "I":
+            elif status[1-disease_index] == "I":
                 infection_blocks[disease_index] += 1
-    
+
+        if not block_issued and status[1-disease_index] == "R":
+            used_recovered_node[disease_index, day] += 1
+            used_recovered_degree[disease_index, day] += degree_values[index]
+
+    ax1.plot(disease_one_counts[:,1], label="Disease one exposed")
+    ax1.plot(disease_two_counts[:,1], label="Disease two exposed")
+    ax2.plot(disease_one_counts[:,2], label="Disease one infected")
+    ax2.plot(disease_two_counts[:,2], label="Disease two infected")
+    ax3.plot(used_recovered_node[0,:], label="Disease 1 recovered nodes used")
+    ax3.plot(used_recovered_node[1,:], label="Disease 2 recovered nodes used")
+    ax4.plot(used_recovered_degree[0,:], label="Disease 1 recovered degree used")
+    ax4.plot(used_recovered_degree[1,:], label="Disease 2 recovered degree used")    
+    ax1.legend()
+    ax2.legend()
+    ax3.legend()
+    ax4.legend()
+
     disease_one_blocks = exposure_blocks[0] + infection_blocks[0]
     if disease_one_blocks > 0:
         disease_one_block_fracs = [exposure_blocks[0]/disease_one_blocks, infection_blocks[0]/disease_one_blocks]
@@ -200,7 +218,9 @@ if __name__ == "__main__":
 
     hist.stairs(block_day_histogram[0,:], fill=True, label="Disease 1", alpha=0.3)
     hist.stairs(block_day_histogram[1,:], fill=True, label="Disease 2", alpha=0.3)
+    hist.set_ylabel("Number of times disease was blocked")
     
     bar.bar([-1,1], [disease_one_blocks, disease_two_blocks], tick_label=["Disease 1", "Disease 2"], color= ["blue", "orange"])
+    bar.set_ylabel("Number of times disease was blocked")
 
     plt.show()
