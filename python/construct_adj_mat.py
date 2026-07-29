@@ -38,8 +38,9 @@ def construct_adj_mat(num_nodes, num_clusters, inter_prob, ba_m):
     return adj_mat
 
 if __name__ == "__main__":
-    A = construct_adj_mat(40*10**3, 100, 0.0001, 20)
+    A = construct_adj_mat(40*10**3, 100, 0.0005, 30)
     degree_values = np.sum(A, axis=0)
+    print(np.linalg.norm(A-np.transpose(A)))
 
-    plt.hist(degree_values, bins=100)
-    plt.show()
+    # plt.hist(degree_values, bins=100)
+    # plt.show()

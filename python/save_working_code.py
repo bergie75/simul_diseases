@@ -1,101 +1,36 @@
-import numpy as np
-import os
-from networkx.generators.random_graphs import erdos_renyi_graph, newman_watts_strogatz_graph, barabasi_albert_graph
-import matplotlib.pyplot as plt
-import networkx as nx
-from node import Node
-import sys
-import yaml
-from construct_adj_mat import construct_adj_mat
-
-rng = np.random.default_rng()
-status_to_num = {"S": 0, "E": 1, "I": 2, "R": 3}
-
-def build_node_list(adjacency_matrix, starting_exposure_frac,
-                    transmit_prob, fall_ill_prob, recover_prob,
-                     dis_weight,prior_res):
-    
-    # check for square adjacency matrix
-    m,n = adjacency_matrix.shape
-    if m != n:
-        raise ValueError("Dimensional mismatch, invalid matrix")
-    
-    node_list = []
-    all_exposures = [np.zeros(n),np.zeros(n)]
-    for i in range(0,n):
-        # randomly choose a disease to update first so that we are not biased
-        first_disease = int((rng.uniform() <= 0.5))  # is either 0 or 1 (as Boolean) with 50% probability
-        
-        generated_status = ["S", "S"]  # default is exposed to neither disease, only get exposed to one initially
-        blocking_disease = None
-        if rng.uniform() <= starting_exposure_frac[first_disease]:
-            generated_status[first_disease] = "E"
-            blocking_disease = first_disease
-            all_exposures[first_disease][i] = 1  # keep track of who is initially infected
-        elif rng.uniform() <= starting_exposure_frac[1-first_disease]:
-            generated_status[1-first_disease] = "E"
-            blocking_disease = 1-first_disease
-            all_exposures[1-first_disease][i] = 1  # keep track of who is initially infected
-        
-        new_node = Node(i, transmit_prob=transmit_prob, fall_ill_prob=fall_ill_prob, 
-                        recover_prob=recover_prob, status=generated_status, blocking_disease=blocking_disease,
-                        inf_decision_weights=dis_weight, prior_resistance=prior_res)
-        node_list.append(new_node)
-    
-    # after all nodes are generated, we give them their neighbors from the adjacency list
-    for Current_node in node_list:
-        neighbor_list = []
-        for n_index in adjacency_matrix[Current_node.index,:].nonzero()[0]:
-            neighbor_list.append(node_list[n_index])
-        Current_node.update_neighbors(neighbor_list)
-    
-    return node_list, all_exposures
-
-def late_exposure(node_list, disease_index, exposure_frac):
-    for node in node_list:
-        if node.blocking_disease is None and rng.uniform() <= exposure_frac:
-            node.blocking_disease = disease_index
-            node.status[disease_index] = "E"
-
-def run_simulation(run_name):
+    # parameter folder
     cwd = os.getcwd()
-    save_folder = os.path.join(cwd, "output", run_name)
     par_folder = os.path.join(cwd, "parameters")
+    new_matrix = False
 
-    # locate configuration file
-    with open(os.path.join(par_folder, "config.yaml"), "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-
-    num_days = cfg["num_days"]
-    scale = cfg["scale"]
-    delay_day = cfg["delay_day"]
-    new_matrix = cfg["new_matrix"]
-    count_self_blocks = cfg["count_self_blocks"]
-
-    # compute variables after loading config values
+    # other parameters
+    num_days = 90
+    scale = 10**3
     num_nodes = 40*scale
+    total_node_set = set(range(0,num_nodes))
     starting_exposure_frac = np.array([1.0, 1.0])/scale
+    delay_day = 0
 
     # will keep track of all daily statistics
     daily_counts = [[], []]
     affected_nodes = [set(), set()]
     global_blocking_events = []
+    count_self_blocks = True
     used_recovered_node = np.zeros((2,num_days))
     used_recovered_degree = np.zeros((2,num_days))
+
 
     # delayed entry of second disease options
     if delay_day > 0:
         starting_exposure_frac[-1] = 0
     late_frac = 1.0/scale
 
-    # define transmission parameters
-
     num_diseases = len(starting_exposure_frac)
+    trans_prob = [0.04, 0.01]
+    fall_ill = [0.2,0.1]  # prob of becoming fully infected
     rec_prob = [0.5/num_days,0.5/num_days]
-    trans_prob = cfg["trans_prob"]
-    fall_ill = cfg["fall_ill"]
-    dis_weight = cfg["dis_weight"]
-    prior_res = cfg["prior_res"]
+    dis_weight = [1,1]
+    prior_res = [0,0]
 
     # adjacency matrix construction and/or saving
     if new_matrix:
@@ -160,11 +95,26 @@ def run_simulation(run_name):
     disease_one_counts = np.array(daily_counts[0])
     disease_two_counts = np.array(daily_counts[1])
 
-    # post-processing after the run on blocking events
+    # draw graph
+    plot_graph = False
+    if plot_graph:
+        pos = nx.spring_layout(G, seed=42335487)
+        nx.draw_networkx_nodes(G, pos, nodelist=list(affected_nodes[0]), node_color="blue")
+        nx.draw_networkx_nodes(G, pos, nodelist=list(affected_nodes[1]), node_color="orange")
+        remaining_nodes = total_node_set.difference(affected_nodes[0].union(affected_nodes[1]))
+        nx.draw_networkx_nodes(G, pos, nodelist=list(remaining_nodes), node_color="gray")
+        nx.draw_networkx_edges(G, pos, width=0.3, alpha=0.5)
+
+    # create subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2)
+    fig2, ((pi1, pi2), (hist, bar)) = plt.subplots(2,2)
+
     exposure_blocks = np.array([0,0])
     infection_blocks = np.array([0,0])
     block_day_histogram = np.zeros((2,num_days))
+    nodes_issuing_blocks = np.zeros(num_nodes)
 
+    # post-processing on blocking events
     for status_readout in global_blocking_events:
         block_issued, disease_index, index, status, day, self_block = status_readout
         if block_issued and (count_self_blocks or not self_block):
@@ -177,39 +127,6 @@ def run_simulation(run_name):
         if not block_issued and status[1-disease_index] == "R":
             used_recovered_node[disease_index, day] += 1
             used_recovered_degree[disease_index, day] += degree_values[index]
-
-    # save all results
-    if not os.path.exists(save_folder):
-        os.mkdir(save_folder)
-
-    # numpy save in newly-created directory
-    np.save(os.path.join(save_folder, "disease_one_counts.npy"), disease_one_counts)
-    np.save(os.path.join(save_folder, "disease_two_counts.npy"), disease_two_counts)
-    np.save(os.path.join(save_folder, "exposure_blocks.npy"), exposure_blocks)
-    np.save(os.path.join(save_folder, "infection_blocks.npy"), infection_blocks)
-    np.save(os.path.join(save_folder, "used_recovered_node.npy"), used_recovered_node)
-    np.save(os.path.join(save_folder, "used_recovered_degree.npy"), used_recovered_degree)
-    np.save(os.path.join(save_folder, "block_day_histogram.npy"), block_day_histogram)
-
-    # save copy of config file
-    with open(os.path.join(save_folder, "config_copy.yaml"), 'w') as f:
-        yaml.dump(cfg, f)
-
-def plot_outputs(run_name):
-    cwd = os.getcwd()
-    save_folder = os.path.join(cwd, "output", run_name)
-
-    disease_one_counts = np.load(os.path.join(save_folder, "disease_one_counts.npy"))
-    disease_two_counts = np.load(os.path.join(save_folder, "disease_two_counts.npy"))
-    exposure_blocks = np.load(os.path.join(save_folder, "exposure_blocks.npy"))
-    infection_blocks = np.load(os.path.join(save_folder, "infection_blocks.npy"))
-    used_recovered_node = np.load(os.path.join(save_folder, "used_recovered_node.npy"))
-    used_recovered_degree = np.load(os.path.join(save_folder, "used_recovered_degree.npy"))
-    block_day_histogram = np.load(os.path.join(save_folder, "block_day_histogram.npy"))
-
-    # create subplots
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2)
-    fig2, ((pi1, pi2), (hist, bar)) = plt.subplots(2,2)
 
     ax1.plot(disease_one_counts[:,1], label="Disease 0 infected")
     ax1.plot(disease_two_counts[:,1], label="Disease 1 infected")
@@ -245,7 +162,3 @@ def plot_outputs(run_name):
     bar.set_ylabel("Number of times disease was blocked")
 
     plt.show()
-
-if __name__ == "__main__":
-    run_simulation("test_function")
-    #plot_outputs("test_function")

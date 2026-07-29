@@ -1,0 +1,9 @@
+num_days : 90
+scale : 1000
+delay_day : 0
+trans_prob : [0.04, 0.01]
+fall_ill : [0.2,0.1]
+dis_weight : [1,1]
+prior_res : [0,0]
+new_matrix: False
+count_self_blocks: True

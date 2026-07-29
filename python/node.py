@@ -25,7 +25,7 @@ class Node:
         self.neighbors = new_neighbors
     
     def accept_infection(self, disease_index, day=None):
-        status_readout = [False, disease_index, self.index, self.status, day, False]
+        status_readout = [False, disease_index, self.index, deepcopy(self.status), day, False]
         if self.blocking_disease is None and self.status[disease_index]=="S" and self.rng.uniform()>self.prior_resistance[disease_index]:
             self.temp_exposure_queue[disease_index] += self.inf_decision_weights[disease_index]
         elif self.blocking_disease is not None:
