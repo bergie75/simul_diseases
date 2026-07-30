@@ -1,55 +1,96 @@
 import numpy as np
 import os
-from networkx.generators.random_graphs import erdos_renyi_graph, newman_watts_strogatz_graph, barabasi_albert_graph
+import yaml
+import pickle
+from copy import deepcopy
+from networkx.generators.random_graphs import barabasi_albert_graph
 import matplotlib.pyplot as plt
 import networkx as nx
 from node import Node
-import sys
-import yaml
-from construct_adj_mat import construct_adj_mat
 
 rng = np.random.default_rng()
 status_to_num = {"S": 0, "E": 1, "I": 2, "R": 3}
 
-def build_node_list(adjacency_matrix, starting_exposure_frac,
-                    transmit_prob, fall_ill_prob, recover_prob,
-                     dis_weight,prior_res):
-    
+def modded_division(x,y):
+    result = []
+    for i in range(0, len(x)):
+        if x[i] == 0:
+            result.append(0)
+        else:
+            result.append(x[i]/y[i])
+
+    return result
+
+def construct_adj_mat(num_nodes, num_clusters, inter_prob, ba_m):
+    if num_nodes % num_clusters != 0:
+        raise ValueError("Cannot divide clusters evenly")
+    nodes_per_cluster = num_nodes //num_clusters
+
+    # adjacency matrix to return
+    adj_mat = np.zeros((num_nodes, num_nodes))
+
+    for i in range(0, num_clusters):
+        for j in range(0, num_clusters):
+            if i==j:
+                G = barabasi_albert_graph(nodes_per_cluster, ba_m)
+                sub_matrix = nx.to_numpy_array(G)
+                adj_mat[i*nodes_per_cluster:(i+1)*nodes_per_cluster, i*nodes_per_cluster:(i+1)*nodes_per_cluster] = sub_matrix
+            else:
+                sub_matrix = np.random.rand(nodes_per_cluster, nodes_per_cluster) <= inter_prob
+                sub_trans = np.transpose(sub_matrix)
+                adj_mat[i*nodes_per_cluster:(i+1)*nodes_per_cluster, j*nodes_per_cluster:(j+1)*nodes_per_cluster] = sub_matrix
+                adj_mat[j*nodes_per_cluster:(j+1)*nodes_per_cluster, i*nodes_per_cluster:(i+1)*nodes_per_cluster] = sub_trans
+
+    return adj_mat
+
+def neighbor_only_node_list(adjacency_matrix):
     # check for square adjacency matrix
     m,n = adjacency_matrix.shape
     if m != n:
         raise ValueError("Dimensional mismatch, invalid matrix")
     
     node_list = []
-    all_exposures = [np.zeros(n),np.zeros(n)]
     for i in range(0,n):
-        # randomly choose a disease to update first so that we are not biased
-        first_disease = int((rng.uniform() <= 0.5))  # is either 0 or 1 (as Boolean) with 50% probability
-        
-        generated_status = ["S", "S"]  # default is exposed to neither disease, only get exposed to one initially
-        blocking_disease = None
-        if rng.uniform() <= starting_exposure_frac[first_disease]:
-            generated_status[first_disease] = "E"
-            blocking_disease = first_disease
-            all_exposures[first_disease][i] = 1  # keep track of who is initially infected
-        elif rng.uniform() <= starting_exposure_frac[1-first_disease]:
-            generated_status[1-first_disease] = "E"
-            blocking_disease = 1-first_disease
-            all_exposures[1-first_disease][i] = 1  # keep track of who is initially infected
-        
-        new_node = Node(i, transmit_prob=transmit_prob, fall_ill_prob=fall_ill_prob, 
-                        recover_prob=recover_prob, status=generated_status, blocking_disease=blocking_disease,
-                        inf_decision_weights=dis_weight, prior_resistance=prior_res)
+        new_node = Node(i)
         node_list.append(new_node)
     
     # after all nodes are generated, we give them their neighbors from the adjacency list
     for Current_node in node_list:
         neighbor_list = []
         for n_index in adjacency_matrix[Current_node.index,:].nonzero()[0]:
-            neighbor_list.append(node_list[n_index])
+            neighbor_list.append(n_index)
         Current_node.update_neighbors(neighbor_list)
     
-    return node_list, all_exposures
+    return node_list
+
+def reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts={}):
+
+    # track information on initial infections
+    n=len(node_list)
+    all_exposures = [np.zeros(n),np.zeros(n)]
+
+    for i,Current_node in enumerate(node_list):
+        # modify any variables which must be altered from default values
+        Current_node.dict_update(config_opts)
+
+        # wipe any effects from previous simulations
+        Current_node.set_status(0, "S")
+        Current_node.set_status(1, "S")
+        Current_node.set_block(None)
+
+        # randomly choose a disease to update first so that we are not biased
+        first_disease = int((rng.uniform() <= 0.5))  # is either 0 or 1 (as Boolean) with 50% probability
+
+        if rng.uniform() <= starting_exposure_frac[first_disease]:
+            Current_node.set_status(first_disease, "E")
+            Current_node.set_block(first_disease)
+            all_exposures[first_disease][i] = 1  # keep track of who is initially infected
+        elif rng.uniform() <= starting_exposure_frac[1-first_disease]:
+            Current_node.set_status(1-first_disease, "E")
+            Current_node.set_block(1-first_disease)
+            all_exposures[1-first_disease][i] = 1  # keep track of who is initially infected
+    
+    return all_exposures
 
 def late_exposure(node_list, disease_index, exposure_frac):
     for node in node_list:
@@ -57,14 +98,20 @@ def late_exposure(node_list, disease_index, exposure_frac):
             node.blocking_disease = disease_index
             node.status[disease_index] = "E"
 
-def run_simulation(run_name):
+def run_simulation(run_name, opt_args={}, node_folder=""):
     cwd = os.getcwd()
     save_folder = os.path.join(cwd, "output", run_name)
     par_folder = os.path.join(cwd, "parameters")
 
+    print(f"Working on {run_name}")
+
     # locate configuration file
     with open(os.path.join(par_folder, "config.yaml"), "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+
+    # after loading config file, use mandatory changes
+    for opt_arg in opt_args.keys():
+        cfg[opt_arg] = deepcopy(opt_args[opt_arg])
 
     num_days = cfg["num_days"]
     scale = cfg["scale"]
@@ -91,31 +138,58 @@ def run_simulation(run_name):
     # define transmission parameters
 
     num_diseases = len(starting_exposure_frac)
-    rec_prob = [0.5/num_days,0.5/num_days]
     trans_prob = cfg["trans_prob"]
     fall_ill = cfg["fall_ill"]
     dis_weight = cfg["dis_weight"]
     prior_res = cfg["prior_res"]
+    rec_weights = cfg["rec_weights"]
+    rec_prob = [x/num_days for x in rec_weights]
+
+    # this is to get around a weird issue with recovery probability
+    sim_cfg = {}
+    node_attributes = ["dis_weight", "fall_ill", "prior_res", "trans_prob"]  # only keep these variables to pass to sim_cfg
+    for attribute in node_attributes:
+        sim_cfg[attribute] = deepcopy(cfg[attribute])
+    sim_cfg["rec_prob"] = rec_prob  # this is what is needed by the nodes
+
+    # matrix parameters
+    m_BA = cfg["m_BA"]
+    scaled_p_ER = cfg["scaled_p_ER"]
+    n_clusters = cfg["n_clusters"]
 
     # adjacency matrix construction and/or saving
+    print("Generating or retrieving adjacency matrix ...")
     if new_matrix:
-        #G = newman_watts_strogatz_graph(num_nodes, int(num_nodes/100), 0)
-        #G = erdos_renyi_graph(num_nodes, 0.7/scale)
-        # G=barabasi_albert_graph(num_nodes, int(0.3/scale*num_nodes))
-        # adjacency_matrix = nx.to_scipy_sparse_array(G)
-        adjacency_matrix = construct_adj_mat(num_nodes, 100, 0.5/scale, 30)
-        np.save(os.path.join(par_folder, "adj_mat"), adjacency_matrix)
+        if not os.path.isdir(os.path.join(par_folder, node_folder)):
+            os.mkdir(os.path.join(par_folder, node_folder))
+
+        adjacency_matrix = construct_adj_mat(num_nodes, n_clusters, scaled_p_ER/scale, m_BA)
+        np.save(os.path.join(par_folder, node_folder, "adj_mat"), adjacency_matrix)
+
+        degree_values = np.sum(adjacency_matrix, axis=0)
+        np.save(os.path.join(par_folder, node_folder, "degree_values"), degree_values)
+
+        # node_list = build_node_list(adjacency_matrix, starting_exposure_frac,
+        #                                         trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
+        node_list = neighbor_only_node_list(adjacency_matrix)
+        with open(os.path.join(par_folder, node_folder, "node_list"), 'wb') as f:
+            pickle.dump(node_list, f)
+
         
     else:
-        adjacency_matrix = np.load(os.path.join(par_folder, "adj_mat.npy"))
+        #adjacency_matrix = np.load(os.path.join(par_folder, "adj_mat.npy"))
+        degree_values = np.load(os.path.join(par_folder, node_folder, "degree_values.npy"))
+        with open(os.path.join(par_folder, node_folder, "node_list"), 'rb') as f:
+            node_list = pickle.load(f)
 
     # calculate degree list
-    degree_values = np.sum(adjacency_matrix, axis=0)
     print(f"Maximum degree: {max(degree_values)}")
-    print(f"Mean degree value: {np.mean(degree_values)}")
+    print(f"Mean degree value: {np.mean(degree_values)}\n")
 
-    node_list, all_exposures = build_node_list(adjacency_matrix, starting_exposure_frac,
-                                                trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
+    print("Generating initial infections ...\n")
+    # node_list, all_exposures = build_node_list(adjacency_matrix, starting_exposure_frac,
+    #                                             trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
+    all_exposures = reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts=sim_cfg)
 
     disease_one_exposed = np.sum(all_exposures[0])
     disease_one_initial = np.array([num_nodes-disease_one_exposed,disease_one_exposed,0,0])
@@ -138,7 +212,7 @@ def run_simulation(run_name):
         # transmission events
         for Current_node in node_list:
             for disease_index in range(0, num_diseases):
-                blocked_trans = Current_node.transmit(disease_index, day=day)
+                blocked_trans = Current_node.transmit(node_list, disease_index, day=day)
                 global_blocking_events.extend(blocked_trans)
         
         # end of day update of status
@@ -190,6 +264,7 @@ def run_simulation(run_name):
     np.save(os.path.join(save_folder, "used_recovered_node.npy"), used_recovered_node)
     np.save(os.path.join(save_folder, "used_recovered_degree.npy"), used_recovered_degree)
     np.save(os.path.join(save_folder, "block_day_histogram.npy"), block_day_histogram)
+    np.save(os.path.join(save_folder, "degree_values.npy"), degree_values)
 
     # save copy of config file
     with open(os.path.join(save_folder, "config_copy.yaml"), 'w') as f:
@@ -219,8 +294,10 @@ def plot_outputs(run_name):
     ax2.plot(disease_two_counts[:,3], label="Disease 1 recovered")
     ax3.plot(used_recovered_node[0,:], label="Disease 0 recovered nodes used")
     ax3.plot(used_recovered_node[1,:], label="Disease 1 recovered nodes used")
-    ax4.plot(used_recovered_degree[0,:], label="Disease 0 recovered degree used")
-    ax4.plot(used_recovered_degree[1,:], label="Disease 1 recovered degree used")   
+    # ax4.plot(used_recovered_degree[0,:], label="Disease 0 recovered degree used")
+    # ax4.plot(used_recovered_degree[1,:], label="Disease 1 recovered degree used")
+    ax4.plot(modded_division(used_recovered_degree[0,:], used_recovered_node[0,:]), label="Disease 0 recovered degree used")
+    ax4.plot(modded_division(used_recovered_degree[1,:], used_recovered_node[1,:]), label="Disease 1 recovered degree used")
     for ax in (ax1, ax2, ax3, ax4):
         ax.grid(True)
         ax.legend()
@@ -247,5 +324,14 @@ def plot_outputs(run_name):
     plt.show()
 
 if __name__ == "__main__":
-    run_simulation("test_function")
-    #plot_outputs("test_function")
+    # run_dict = {"no_prior_res": {"prior_res": [0,0]},
+    #             "prior_res_0.2": {"prior_res": [0,0.2]},
+    #             "prior_res_0.4": {"prior_res": [0,0.4]}}
+
+    # for run_name in run_dict.keys():
+    #     run_simulation(run_name, opt_args=run_dict[run_name])
+
+    run_simulation("retrieve_new_setup", opt_args={"rec_weights": [1,1]}, node_folder="test_new_setup")
+    plot_outputs("retrieve_new_setup")
+
+    # plot_outputs("recovery_0.5")
