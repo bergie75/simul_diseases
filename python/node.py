@@ -4,7 +4,7 @@ from copy import deepcopy
 class Node:
     def __init__(self, index, trans_prob=[1,1], fall_ill=[1,1], rec_prob=[1,1],
                   status=["S", "S"], neighbors=[], blocking_disease=None,
-                  dis_weight=[1,1], prior_res=[0,0]):
+                  dis_weight=[1,1], prior_res=[0,0], large_resp=[1,1]):
         # random number generator to handle all node instances
         self.rng = np.random.default_rng()
 
@@ -17,9 +17,11 @@ class Node:
         self.blocking_disease = blocking_disease  # prevents further exposures if set to a disease index
         self.dis_weight = np.array(dis_weight)  # how easily one disease can prevent the other from getting a foothold
         self.prior_res = np.array(prior_res)
+        self.large_resp = large_resp
 
         # temp variables
         self.temp_exposure_queue = np.array([0.0,0.0])
+        self.caused_large_resp = [False, False]
     
     def set_block(self, blocking_disease):
         self.blocking_disease = blocking_disease
@@ -55,12 +57,17 @@ class Node:
                 self.temp_exposure_queue *= 0.0  # resets exposure queue
                 self.blocking_disease = chosen_disease
                 self.status[chosen_disease] = "E"
+                self.caused_large_resp[chosen_disease] = (self.rng.uniform() <= self.large_resp[chosen_disease])
                 return chosen_disease
     
     def progress_status(self):
         for disease_index, current_status in enumerate(self.status):
             if current_status == "E" and self.rng.uniform()<= self.fall_ill[disease_index]:
-                self.status[disease_index] = "I"
+                if self.caused_large_resp[disease_index]:
+                    self.status[disease_index] = "I"
+                else:
+                    self.status[disease_index] = "R"
+                    self.blocking_disease = None
             elif current_status == "I" and self.rng.uniform() <= self.rec_prob[disease_index]:
                 self.status[disease_index] = "R"
                 self.blocking_disease = None  # disease releases hold on the node, allowing new diseases to infect

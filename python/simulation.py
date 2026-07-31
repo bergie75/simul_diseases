@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from sys import exit as leave_program
 import yaml
 import pickle
 from copy import deepcopy
@@ -145,7 +146,7 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
 
     # this is to get around a weird issue with recovery probability
     sim_cfg = {}
-    node_attributes = ["dis_weight", "fall_ill", "prior_res", "trans_prob"]  # only keep these variables to pass to sim_cfg
+    node_attributes = ["dis_weight", "fall_ill", "prior_res", "trans_prob", "large_resp"]  # only keep these variables to pass to sim_cfg
     for attribute in node_attributes:
         sim_cfg[attribute] = deepcopy(cfg[attribute])
     sim_cfg["rec_prob"] = rec_prob  # this is what is needed by the nodes
@@ -160,6 +161,10 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     if new_matrix:
         if not os.path.isdir(os.path.join(par_folder, node_folder)):
             os.mkdir(os.path.join(par_folder, node_folder))
+        else:
+            response = input("Directory already exists. Overwrite? (y/n): ")
+            if response != "y":
+                leave_program()
 
         adjacency_matrix = construct_adj_mat(num_nodes, n_clusters, scaled_p_ER/scale, m_BA)
         degree_values = np.sum(adjacency_matrix, axis=0)
