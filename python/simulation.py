@@ -119,6 +119,9 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     new_matrix = cfg["new_matrix"]
     count_self_blocks = cfg["count_self_blocks"]
 
+    if new_matrix and node_folder == "":
+        node_folder = run_name
+
     # compute variables after loading config values
     num_nodes = 40*scale
     starting_exposure_frac = np.array([1.0, 1.0])/scale
@@ -136,12 +139,7 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     late_frac = 1.0/scale
 
     # define transmission parameters
-
     num_diseases = len(starting_exposure_frac)
-    trans_prob = cfg["trans_prob"]
-    fall_ill = cfg["fall_ill"]
-    dis_weight = cfg["dis_weight"]
-    prior_res = cfg["prior_res"]
     rec_weights = cfg["rec_weights"]
     rec_prob = [x/num_days for x in rec_weights]
 
@@ -158,37 +156,29 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     n_clusters = cfg["n_clusters"]
 
     # adjacency matrix construction and/or saving
-    print("Generating or retrieving adjacency matrix ...")
+    print("Generating network information ...")
     if new_matrix:
         if not os.path.isdir(os.path.join(par_folder, node_folder)):
             os.mkdir(os.path.join(par_folder, node_folder))
 
         adjacency_matrix = construct_adj_mat(num_nodes, n_clusters, scaled_p_ER/scale, m_BA)
-        np.save(os.path.join(par_folder, node_folder, "adj_mat"), adjacency_matrix)
-
         degree_values = np.sum(adjacency_matrix, axis=0)
         np.save(os.path.join(par_folder, node_folder, "degree_values"), degree_values)
 
-        # node_list = build_node_list(adjacency_matrix, starting_exposure_frac,
-        #                                         trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
         node_list = neighbor_only_node_list(adjacency_matrix)
         with open(os.path.join(par_folder, node_folder, "node_list"), 'wb') as f:
             pickle.dump(node_list, f)
 
-        
     else:
-        #adjacency_matrix = np.load(os.path.join(par_folder, "adj_mat.npy"))
         degree_values = np.load(os.path.join(par_folder, node_folder, "degree_values.npy"))
         with open(os.path.join(par_folder, node_folder, "node_list"), 'rb') as f:
             node_list = pickle.load(f)
 
-    # calculate degree list
+    # output degree information
     print(f"Maximum degree: {max(degree_values)}")
     print(f"Mean degree value: {np.mean(degree_values)}\n")
 
     print("Generating initial infections ...\n")
-    # node_list, all_exposures = build_node_list(adjacency_matrix, starting_exposure_frac,
-    #                                             trans_prob, fall_ill, rec_prob, dis_weight, prior_res)
     all_exposures = reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts=sim_cfg)
 
     disease_one_exposed = np.sum(all_exposures[0])
@@ -266,6 +256,9 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     np.save(os.path.join(save_folder, "block_day_histogram.npy"), block_day_histogram)
     np.save(os.path.join(save_folder, "degree_values.npy"), degree_values)
 
+    # add a note about which node folder was used, since graph parameters may not be changed when using a saved network
+    cfg["node_folder"] = node_folder
+
     # save copy of config file
     with open(os.path.join(save_folder, "config_copy.yaml"), 'w') as f:
         yaml.dump(cfg, f)
@@ -324,14 +317,4 @@ def plot_outputs(run_name):
     plt.show()
 
 if __name__ == "__main__":
-    # run_dict = {"no_prior_res": {"prior_res": [0,0]},
-    #             "prior_res_0.2": {"prior_res": [0,0.2]},
-    #             "prior_res_0.4": {"prior_res": [0,0.4]}}
-
-    # for run_name in run_dict.keys():
-    #     run_simulation(run_name, opt_args=run_dict[run_name])
-
-    run_simulation("retrieve_new_setup", opt_args={"rec_weights": [1,1]}, node_folder="test_new_setup")
-    plot_outputs("retrieve_new_setup")
-
-    # plot_outputs("recovery_0.5")
+    pass
