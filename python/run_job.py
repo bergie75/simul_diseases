@@ -11,6 +11,6 @@ import matplotlib.pyplot as plt
 # run_simulation("retrieve_new_setup", opt_args={"rec_weights": [1,1]}, node_folder="default_matrix")
 # plot_outputs("retrieve_new_setup")
 
-opt_args = {"rec_weights": [1,1], "scaled_p_ER": 0.05, "m_BA": 10}
-run_simulation("low_connectivity_less_recovery", opt_args=opt_args, node_folder="low_connectivity")
-plot_outputs("low_connectivity_less_recovery")
+opt_args = {"scaled_p_ER": 0.1, "m_BA": 15, "large_resp": [0.2, 0.2]}
+#run_simulation("low_extreme_response_less_connectivity", opt_args=opt_args, node_folder="less_extreme_response_less_connectivity")
+plot_outputs("less_extreme_response_less_connectivity")
