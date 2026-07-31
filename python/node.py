@@ -56,19 +56,19 @@ class Node:
                 chosen_disease = self.rng.binomial(1, 1-dis_zero_prob)
                 self.temp_exposure_queue *= 0.0  # resets exposure queue
                 self.blocking_disease = chosen_disease
-                self.status[chosen_disease] = "E"
+                self.status[chosen_disease] = "I"
                 self.caused_large_resp[chosen_disease] = (self.rng.uniform() <= self.large_resp[chosen_disease])
                 return chosen_disease
     
     def progress_status(self):
         for disease_index, current_status in enumerate(self.status):
-            if current_status == "E" and self.rng.uniform()<= self.fall_ill[disease_index]:
+            if current_status == "I" and self.rng.uniform()<= self.fall_ill[disease_index]:
                 if self.caused_large_resp[disease_index]:
-                    self.status[disease_index] = "I"
+                    self.status[disease_index] = "H"
                 else:
                     self.status[disease_index] = "R"
                     self.blocking_disease = None
-            elif current_status == "I" and self.rng.uniform() <= self.rec_prob[disease_index]:
+            elif current_status == "H" and self.rng.uniform() <= self.rec_prob[disease_index]:
                 self.status[disease_index] = "R"
                 self.blocking_disease = None  # disease releases hold on the node, allowing new diseases to infect
     
@@ -76,7 +76,7 @@ class Node:
         # check if currently exposed to the disease. If yes, transmit probabilistically to neighbors
         # if not, pass
         blocking_events = []
-        if self.status[disease_index] == "E":
+        if self.status[disease_index] == "I":
             for neighbor in self.neighbors:
                 if self.rng.uniform() <= self.trans_prob[disease_index]*trans_modifier:
                     blocking_events.append(nodelist[neighbor].accept_infection(disease_index, day=day))
@@ -85,7 +85,7 @@ class Node:
 
 if __name__ == "__main__":
     new_node = Node(12)
-    new_node.dict_update({"status": ["E", "R"], "blocking_disease": 0})
+    new_node.dict_update({"status": ["I", "R"], "blocking_disease": 0})
     print(new_node.status)
     print(new_node.blocking_disease)
     # test node behaviors
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     # print("initial status check")
     # print(recip1.status)
     # print(recip2.status)
-    # totally_contagious = Node(1, neighbors=[recip1, recip2], status=["E", "E"])
+    # totally_contagious = Node(1, neighbors=[recip1, recip2], status=["I", "I"])
     # totally_contagious.transmit(0)
     # print("prior to accept transmit")
     # print(recip1.status)

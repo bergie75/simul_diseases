@@ -10,7 +10,7 @@ import networkx as nx
 from node import Node
 
 rng = np.random.default_rng()
-status_to_num = {"S": 0, "E": 1, "I": 2, "R": 3}
+status_to_num = {"S": 0, "I": 1, "H": 2, "R": 3}
 
 def modded_division(x,y):
     result = []
@@ -83,11 +83,11 @@ def reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts={}):
         first_disease = int((rng.uniform() <= 0.5))  # is either 0 or 1 (as Boolean) with 50% probability
 
         if rng.uniform() <= starting_exposure_frac[first_disease]:
-            Current_node.set_status(first_disease, "E")
+            Current_node.set_status(first_disease, "I")
             Current_node.set_block(first_disease)
             all_exposures[first_disease][i] = 1  # keep track of who is initially infected
         elif rng.uniform() <= starting_exposure_frac[1-first_disease]:
-            Current_node.set_status(1-first_disease, "E")
+            Current_node.set_status(1-first_disease, "I")
             Current_node.set_block(1-first_disease)
             all_exposures[1-first_disease][i] = 1  # keep track of who is initially infected
     
@@ -97,7 +97,7 @@ def late_exposure(node_list, disease_index, exposure_frac):
     for node in node_list:
         if node.blocking_disease is None and rng.uniform() <= exposure_frac:
             node.blocking_disease = disease_index
-            node.status[disease_index] = "E"
+            node.status[disease_index] = "I"
 
 def run_simulation(run_name, opt_args={}, node_folder=""):
     cwd = os.getcwd()
@@ -238,9 +238,9 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
         block_issued, disease_index, index, status, day, self_block = status_readout
         if block_issued and (count_self_blocks or not self_block):
             block_day_histogram[disease_index, day] += 1
-            if status[1-disease_index] == "E":
+            if status[1-disease_index] == "I":
                 exposure_blocks[disease_index] += 1
-            elif status[1-disease_index] == "I":
+            elif status[1-disease_index] == "H":
                 infection_blocks[disease_index] += 1
 
         if not block_issued and status[1-disease_index] == "R":
