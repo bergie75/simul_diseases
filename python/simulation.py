@@ -184,7 +184,7 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     print(f"Mean degree value: {np.mean(degree_values)}\n")
 
     print("Generating initial infections ...\n")
-    all_exposures = reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts=sim_cfg)
+    all_exposures = reset_nodes_new_sim(node_list, starting_exposure_frac, config_opts=sim_cfg)  # enforces all parameter value changes
 
     disease_one_exposed = np.sum(all_exposures[0])
     disease_one_initial = np.array([num_nodes-disease_one_exposed,disease_one_exposed,0,0])

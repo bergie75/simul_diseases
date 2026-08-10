@@ -11,8 +11,13 @@ import matplotlib.pyplot as plt
 # run_simulation("retrieve_new_setup", opt_args={"rec_weights": [1,1]}, node_folder="default_matrix")
 # plot_outputs("retrieve_new_setup")
 
-# opt_args = {"new_matrix": True}
-# run_simulation("default_matrix", opt_args=opt_args, node_folder="")
-# plot_outputs("default_matrix")
-#re_run_simulation("default_matrix")
-plot_outputs("default_matrix")
+run_name = "less_extreme_response"
+opt_args = {"large_resp":[0.5,0.5]}
+run_simulation(run_name, opt_args=opt_args, node_folder="default_matrix")
+plot_outputs(run_name)
+# to_redo = "less_extreme_response"
+# re_run_simulation(to_redo)
+# plot_outputs(to_redo)
+
+# currently valid
+# default_matrix, less_connectivity, less_extreme_response, low_extreme_response
