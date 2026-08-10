@@ -52,7 +52,7 @@ def neighbor_only_node_list(adjacency_matrix):
     
     node_list = []
     for i in range(0,n):
-        new_node = Node(i)
+        new_node = Node(i)  # should use generic values for all parameters from the config list
         node_list.append(new_node)
     
     # after all nodes are generated, we give them their neighbors from the adjacency list
@@ -267,6 +267,18 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     # save copy of config file
     with open(os.path.join(save_folder, "config_copy.yaml"), 'w') as f:
         yaml.dump(cfg, f)
+
+def re_run_simulation(run_name):
+    cwd = os.getcwd()
+    par_folder = os.path.join(cwd, "output", run_name)
+
+    # locate configuration file
+    with open(os.path.join(par_folder, "config_copy.yaml"), "r", encoding="utf-8") as f:
+        opt_args = yaml.safe_load(f)
+
+    node_folder = opt_args["node_folder"]
+    opt_args["new_matrix"] = False
+    run_simulation(run_name, opt_args=opt_args, node_folder=node_folder)
 
 def plot_outputs(run_name):
     cwd = os.getcwd()

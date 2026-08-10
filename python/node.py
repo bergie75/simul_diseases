@@ -1,10 +1,31 @@
 import numpy as np
 from copy import deepcopy
+import yaml
+import os
+
+cwd = os.getcwd()
+par_folder = os.path.join(cwd, "parameters")
+
+# locate configuration file
+with open(os.path.join(par_folder, "config.yaml"), "r", encoding="utf-8") as f:
+    cfg = yaml.safe_load(f)
+
+# unpack variables to use in default Node generator
+def_trans_prob = cfg["trans_prob"]
+def_fall_ill = cfg["fall_ill"]
+def_dis_weight = cfg["dis_weight"]
+def_prior_res = cfg["prior_res"]
+def_large_resp = cfg["large_resp"]
+
+# separate out, requires a calculation
+rec_weights = cfg["rec_weights"]
+num_days = cfg["num_days"]
+def_rec_prob = [x/num_days for x in rec_weights]
 
 class Node:
-    def __init__(self, index, trans_prob=[1,1], fall_ill=[1,1], rec_prob=[1,1],
+    def __init__(self, index, trans_prob=def_trans_prob, fall_ill=def_fall_ill, rec_prob=def_rec_prob,
                   status=["S", "S"], neighbors=[], blocking_disease=None,
-                  dis_weight=[1,1], prior_res=[0,0], large_resp=[1,1]):
+                  dis_weight=def_dis_weight, prior_res=def_prior_res, large_resp=def_large_resp):
         # random number generator to handle all node instances
         self.rng = np.random.default_rng()
 
@@ -28,6 +49,10 @@ class Node:
 
     def set_status(self, disease_index, disease_status):
         self.status[disease_index] = disease_status
+
+    def reset_temps(self):
+        self.temp_exposure_queue = np.array([0.0, 0.0])
+        self.caused_large_resp = [False, False]
 
     def dict_update(self, config_opts):
         for var in config_opts.keys():
