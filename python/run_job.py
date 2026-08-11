@@ -11,13 +11,14 @@ import matplotlib.pyplot as plt
 # run_simulation("retrieve_new_setup", opt_args={"rec_weights": [1,1]}, node_folder="default_matrix")
 # plot_outputs("retrieve_new_setup")
 
-run_name = "less_extreme_response"
-opt_args = {"large_resp":[0.5,0.5]}
-run_simulation(run_name, opt_args=opt_args, node_folder="default_matrix")
-plot_outputs(run_name)
-# to_redo = "less_extreme_response"
-# re_run_simulation(to_redo)
-# plot_outputs(to_redo)
+run_name = "same_low_virulence_long_illness"
+#opt_args = {"trans_prob": [0.01, 0.01], "fall_ill": [0.05, 0.1]}
+#run_simulation(run_name, opt_args=opt_args, node_folder="default_matrix")
+#plot_outputs(run_name)
+#plot_outputs("same_virulence")
+to_redo = "less_connectivity"
+re_run_simulation(to_redo)
+plot_outputs(to_redo)
 
 # currently valid
 # default_matrix, less_connectivity, less_extreme_response, low_extreme_response

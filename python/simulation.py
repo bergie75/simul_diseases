@@ -8,6 +8,7 @@ from networkx.generators.random_graphs import barabasi_albert_graph
 import matplotlib.pyplot as plt
 import networkx as nx
 from node import Node
+from matplotlib.transforms import ScaledTranslation
 
 rng = np.random.default_rng()
 status_to_num = {"S": 0, "I": 1, "H": 2, "R": 3}
@@ -99,7 +100,7 @@ def late_exposure(node_list, disease_index, exposure_frac):
             node.blocking_disease = disease_index
             node.status[disease_index] = "I"
 
-def run_simulation(run_name, opt_args={}, node_folder=""):
+def run_simulation(run_name, opt_args={}, node_folder="", trans_mod=None):
     cwd = os.getcwd()
     save_folder = os.path.join(cwd, "output", run_name)
     par_folder = os.path.join(cwd, "parameters")
@@ -120,6 +121,15 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
     new_matrix = cfg["new_matrix"]
     count_self_blocks = cfg["count_self_blocks"]
 
+    # allow for weather and other modifications of transmission probability
+    if trans_mod is not None:
+        trans_mod_file = os.path.join(cwd, "parameters", f"{trans_mod}".npy)
+        trans_modifiers = np.load(trans_mod_file)
+        cfg["trans_mod"] = trans_mod
+    else:
+        trans_modifiers = np.ones(num_days)
+
+    # for convenience so node_folder does not need to be specified when creating a new matrix
     if new_matrix and node_folder == "":
         node_folder = run_name
 
@@ -196,6 +206,9 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
 
     for day in range(0, num_days):
         print(f"Day {1+day}")
+        # determine impact of exogeneous factors on transmission
+        daily_trans_mod = trans_modifiers[day]
+
         if delay_day > 0 and delay_day-1 == day:
             late_exposure(node_list, 1, late_frac)
             print("Late exposure to second disease initiated.")
@@ -207,7 +220,7 @@ def run_simulation(run_name, opt_args={}, node_folder=""):
         # transmission events
         for Current_node in node_list:
             for disease_index in range(0, num_diseases):
-                blocked_trans = Current_node.transmit(node_list, disease_index, day=day)
+                blocked_trans = Current_node.transmit(node_list, disease_index, day=day, trans_mod=daily_trans_mod)
                 global_blocking_events.extend(blocked_trans)
         
         # end of day update of status
@@ -278,7 +291,14 @@ def re_run_simulation(run_name):
 
     node_folder = opt_args["node_folder"]
     opt_args["new_matrix"] = False
-    run_simulation(run_name, opt_args=opt_args, node_folder=node_folder)
+
+    # check for any modifications to transmission
+    if "trans_mod" in opt_args.keys():
+        trans_mod = opt_args["trans_mod"]
+    else:
+        trans_mod = None
+
+    run_simulation(run_name, opt_args=opt_args, node_folder=node_folder, trans_mod=trans_mod)
 
 def plot_outputs(run_name):
     cwd = os.getcwd()
@@ -333,5 +353,100 @@ def plot_outputs(run_name):
 
     plt.show()
 
+def comparative_outputs(run_names, standardize_y_axis=False):
+    # administrative variables
+    num_to_plot = len(run_names)
+    cwd = os.getcwd()
+    caption = "A comparative analysis of "
+
+    if num_to_plot == 4:
+        letters = ["a)", "b)", "c)", "d)"]
+        fig, ax = plt.subplots(2,2)
+        peak_value = -np.inf
+
+        for i, run_name in enumerate(run_names):
+            row_num = i // 2
+            col_num = i % 2
+
+            # load results
+            save_folder = os.path.join(cwd, "output", run_name)
+            disease_one_counts = np.load(os.path.join(save_folder, "disease_one_counts.npy"))
+            disease_two_counts = np.load(os.path.join(save_folder, "disease_two_counts.npy"))
+            ax[row_num, col_num].plot(disease_one_counts[:,1], label="Disease 1")
+            ax[row_num, col_num].plot(disease_two_counts[:,1], label="Disease 2")
+            ax[row_num, col_num].grid(True)
+            ax[row_num, col_num].legend()
+
+            peak_value = max(peak_value, np.max(disease_one_counts[:,1]), np.max(disease_two_counts[:,2]))
+
+            if col_num == 0:
+                ax[row_num, col_num].set_ylabel("Infected nodes")
+
+            if row_num == 1:
+                ax[row_num, col_num].set_xlabel("Day")
+
+            # add letterin
+            ax[row_num, col_num].text(
+                    -0.1, 1.15, letters[i], transform=(
+                        ax[row_num, col_num].transAxes + ScaledTranslation(-25/72, -25/72, fig.dpi_scale_trans)),
+                    fontsize='large', va='bottom', fontfamily='serif')
+
+            # adjust caption
+            if i<3:
+                caption += f"{letters[i]} {run_names[i]}, "
+            else:
+                caption += f"and {letters[i]} {run_names[i]}."
+
+        if standardize_y_axis:
+                    for i in range(0, 4):
+                        row_num = i // 2
+                        col_num = i % 2
+                        ax[row_num, col_num].set_ylim([0, 1.1*peak_value])
+
+    elif num_to_plot == 2:
+        letters = ["a)", "b)"]
+        fig, ax = plt.subplots(1,2)
+        peak_value = -np.inf
+
+        for i, run_name in enumerate(run_names):
+
+            # load results
+            save_folder = os.path.join(cwd, "output", run_name)
+            disease_one_counts = np.load(os.path.join(save_folder, "disease_one_counts.npy"))
+            disease_two_counts = np.load(os.path.join(save_folder, "disease_two_counts.npy"))
+            ax[i].plot(disease_one_counts[:,1], label="Disease 1")
+            ax[i].plot(disease_two_counts[:,1], label="Disease 2")
+            ax[i].grid(True)
+            ax[i].legend()
+            ax[i].set_xlabel("Day")
+
+            # adjust calculated peak for potential standardization
+            peak_value = max(peak_value, np.max(disease_one_counts[:,1]), np.max(disease_two_counts[:,2]))
+
+            if i == 0:
+                ax[i].set_ylabel("Infected nodes")               
+
+            # add letterin
+            ax[i].text(
+                    -0.05, 1.07, letters[i], transform=(
+                        ax[i].transAxes + ScaledTranslation(-25/72, -25/72, fig.dpi_scale_trans)),
+                    fontsize='large', va='bottom', fontfamily='serif')
+
+            # adjust caption
+            if i==0:
+                caption += f"{letters[i]} {run_names[i]} and "
+            else:
+                caption += f"{letters[i]} {run_names[i]}."
+        
+        if standardize_y_axis:
+            for i in range(0, 2):
+                ax[i].set_ylim([0, 1.1*peak_value])
+    else:
+        raise ValueError("Number of plots not implemented")
+
+    print(caption)
+    plt.show()
+
 if __name__ == "__main__":
-    pass
+    comparative_outputs(["less_extreme_response", "low_extreme_response"], standardize_y_axis=True)
+    #comparative_outputs(["no_recovery", "recovery_0.5", "recovery_1", "recovery_2"], standardize_y_axis=True)

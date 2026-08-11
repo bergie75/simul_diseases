@@ -97,13 +97,13 @@ class Node:
                 self.status[disease_index] = "R"
                 self.blocking_disease = None  # disease releases hold on the node, allowing new diseases to infect
     
-    def transmit(self, nodelist, disease_index, day=None, trans_modifier=1.0):
+    def transmit(self, nodelist, disease_index, day=None, trans_mod=1.0):
         # check if currently exposed to the disease. If yes, transmit probabilistically to neighbors
         # if not, pass
         blocking_events = []
         if self.status[disease_index] == "I":
             for neighbor in self.neighbors:
-                if self.rng.uniform() <= self.trans_prob[disease_index]*trans_modifier:
+                if self.rng.uniform() <= self.trans_prob[disease_index]*trans_mod:
                     blocking_events.append(nodelist[neighbor].accept_infection(disease_index, day=day))
         
         return blocking_events
