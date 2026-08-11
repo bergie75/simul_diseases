@@ -31,6 +31,6 @@ if __name__ == "__main__":
     run_names = []
     delete_runs(run_names)
 
-    old_run_names = ["same_virulence"]
-    new_run_names = ["same_low_virulence"]
+    old_run_names = ["default_two_week_trans_cycle"]
+    new_run_names = ["default_two_week_cosine"]
     rename_runs(old_run_names, new_run_names)

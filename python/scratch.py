@@ -3,15 +3,10 @@ import os
 import networkx as nx
 from networkx.generators.random_graphs import erdos_renyi_graph, newman_watts_strogatz_graph, barabasi_albert_graph, fast_gnp_random_graph
 
-a=np.array([1,2,3,4])
-b=np.array([5,4,3,2])
+name_mod = "sine_two_week"
+cwd = os.getcwd()
+savefile = os.path.join(cwd, "parameters", f"{name_mod}.npy")
 
-
-
-        #G = newman_watts_strogatz_graph(num_nodes, int(num_nodes/100), 0)
-        #G = erdos_renyi_graph(num_nodes, 0.7/scale)
-        # G=barabasi_albert_graph(num_nodes, int(0.3/scale*num_nodes))
-        # adjacency_matrix = nx.to_scipy_sparse_array(G)
-
-x=""
-print(x=="")
+num_days = 90
+trans_mods = np.array([0.5+0.5*np.cos(2*np.pi*t/14) for t in range(0, 90)])
+np.save(savefile, trans_mods)

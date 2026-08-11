@@ -126,6 +126,10 @@ def run_simulation(run_name, opt_args={}, node_folder="", trans_mod=None):
         trans_mod_file = os.path.join(cwd, "parameters", f"{trans_mod}".npy)
         trans_modifiers = np.load(trans_mod_file)
         cfg["trans_mod"] = trans_mod
+
+        # check for compatibility with num_days
+        if len(trans_modifiers) != num_days:
+            raise ValueError("Transmission modifiers does not occur over the appropriate number of days")
     else:
         trans_modifiers = np.ones(num_days)
 
